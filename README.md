@@ -1,8 +1,17 @@
 # Spend Tracker
 
-A small REST API + minimal UI for logging expenses and viewing a spend summary.
+A small REST API and minimal frontend for logging expenses and viewing a spend summary.
 
-Built with **FastAPI**, **SQLAlchemy**, and **SQLite**.
+Built with FastAPI, SQLAlchemy, SQLite, and a lightweight HTML/JavaScript UI.
+
+## Features included
+
+- Create expenses with validation for amount, category, date, and note
+- List expenses with optional filters by category and date range
+- Get a total spend summary with category breakdown
+- Show month-over-month change and category-level spike insights
+- Protect API routes with a simple API-key check
+- Support a minimal browser UI for quick manual testing
 
 ## How to run
 
@@ -10,141 +19,118 @@ Built with **FastAPI**, **SQLAlchemy**, and **SQLite**.
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. (Optional) create a `.env` file with a custom API key.
-#    The app reads this automatically; it defaults to "demo-secret-key".
+# 2. Optional: create a .env file with a custom API key
+#    Default is demo-secret-key if no value is set.
 echo API_KEY=your-secret-key > .env
 
 # 3. Start the API
 uvicorn app.main:app --reload
 ```
 
-The API is now at `http://localhost:8000`. Interactive docs (Swagger UI) are
-at `http://localhost:8000/docs`.
+Then open:
+- API: http://localhost:8000
+- Swagger docs: http://localhost:8000/docs
 
-Open `frontend/index.html` directly in a browser (double-click it, or serve
-it with `python -m http.server` from the `frontend/` folder). Set the "API
-key" field in the page to match `API_KEY` (default `demo-secret-key`). The
-`.env` file is ignored by Git and should never be committed.
-
-### Running the tests
+To use the frontend, open the file in the frontend folder in a browser or serve it locally:
 
 ```bash
-pytest -v
+cd frontend
+python -m http.server 8001
 ```
 
-20 tests covering: input validation (negative/zero amounts, blank category,
-missing/malformed dates), auth enforcement, filtering (category, date
-range, invalid range), and summary math (totals, category breakdown,
-month-over-month in normal/no-data/year-boundary cases, and the >20%
-category insight — including that it correctly *doesn't* fire when there's
-no prior-month baseline).
+Then open http://localhost:8001 and set the API key to match the value in the .env file or use the default demo-secret-key.
 
 ## API
 
-All endpoints except `/health` require an `X-API-Key` header.
+All routes except /health require the X-API-Key header.
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/expenses` | Create an expense. Body: `{amount, category, note?, date}` |
-| GET | `/expenses` | List expenses. Query params: `category`, `start_date`, `end_date` (all optional) |
-| GET | `/summary` | Spend summary. Same optional filters as above |
+| POST | /expenses | Create an expense |
+| GET | /expenses | List expenses with optional category/date filters |
+| GET | /summary | Get total spend, category totals, and month-over-month summary |
 
-`GET /summary` returns:
+Request body for creating an expense:
 
 ```json
 {
-  "total_spend": 125.50,
-  "spend_by_category": [{"category": "Food", "total": 105.5}, ...],
-  "current_month_total": 80.0,
-  "previous_month_total": 45.5,
-  "month_over_month_percent_change": 75.82,
-  "insights": [
-    {"category": "Food", "previous_month_total": 45.5, "current_month_total": 60.0, "percent_change": 31.87}
-  ]
+  "amount": 45.5,
+  "category": "Food",
+  "note": "Lunch with team",
+  "date": "2026-09-22"
 }
 ```
 
-`insights` lists any category whose spend this month is more than 20% above
-last month's spend for that same category (the bonus requirement).
+Optional filters for expense and summary lists:
 
-## Key design decisions
+```text
+/category=Food
+&start_date=2026-09-01
+&end_date=2026-09-30
+```
 
-- **Filters scope the totals, not the trend.** `total_spend` and
-  `spend_by_category` on `/summary` respect the same `category`/date-range
-  filters as `/expenses`, so the two endpoints stay consistent. But
-  month-over-month and the insight flags are always computed against full
-  calendar months — filtering a date range down to, say, 10 days would
-  usually leave nothing to compare, so that comparison intentionally
-  ignores the date-range filter (it still respects a `category` filter,
-  since "how did Food change" is a reasonable question to scope).
-- **No baseline is treated as "unknown", not "0% change" or "infinite
-  increase".** If a category had zero spend last month, jumping to any
-  amount this month isn't flagged as a spike — there's nothing to compare
-  it *to*. Same logic applies to the overall MoM figure: it's `null` when
-  there's no previous-month data, rather than a misleading number.
-- **Free-text category, not a categories table.** A normalized table would
-  be the "correct" long-term schema, but it adds a join and an admin UI for
-  very little benefit at this scale, and it makes the UI less forgiving for
-  a quick add-expense flow. Indexed as a plain string column instead
-  (plus a composite index on `category + date`, since that's the most
-  common filter combination).
-- **`date` (when spent) vs `created_at` (when logged) are separate
-  columns.** Letting people log a backdated lunch receipt shouldn't corrupt
-  the audit trail of when the row was actually inserted.
-- **Custom validation error formatting.** FastAPI's default 422 payload is
-  fairly deeply nested; the app flattens it to `{"detail", "errors": [{field,
-  message}]}` so a frontend can render field-level errors without knowing
-  Pydantic's internals.
-- **Business logic lives in `crud.py`, not the route handlers.** This is
-  what let me unit-test summary math directly (with an injectable `today`)
-  instead of only through HTTP, which made the month-over-month and
-  year-boundary tests deterministic regardless of when the suite runs.
-- **Auth is a single shared API key**, not per-user accounts — the task
-  only asked for "basic" auth, and a shared key was the lightest thing that
-  actually gates access on every endpoint.
+Example:
 
-## What I'd do differently with more time
+```text
+GET /expenses?category=Food&start_date=2026-09-01&end_date=2026-09-30
+GET /summary?category=Food&start_date=2026-09-01&end_date=2026-09-30
+```
 
-- **Store money as integer cents**, not `Float`. Floats are fine for a
-  take-home demo but are the wrong type for currency in anything real —
-  I'd migrate to `Integer` cents or `Decimal` with a fixed scale.
-- **Pagination on `GET /expenses`.** Fine for a demo dataset; would need
-  `limit`/`offset` or cursor-based paging for anything with real volume.
-- **Per-user accounts** instead of one shared API key — expenses aren't
-  currently scoped to a user at all, which is fine for a single-user demo
-  but wouldn't survive contact with a second user.
-- **Alembic migrations** instead of `create_all()` — fine for a fresh
-  SQLite file, but `create_all()` won't handle schema changes to an
-  existing database.
-- **Currency field** — right now every amount is assumed to be the same
-  currency; a real tracker would need to store and convert currencies.
-- **Deployment** — didn't deploy this to a public URL for the submission;
-  it's a straightforward `Dockerfile` + Render/Railway deploy away (the app
-  already reads `DATABASE_URL` and `API_KEY` from env vars for exactly
-  that reason).
+## Validation and business rules
+
+- Amount must be greater than 0
+- Category cannot be blank after trimming whitespace
+- Date cannot be in the future
+- If start_date is after end_date, the API returns a 400 error
+- Summary totals are scoped by category/date filter
+- Month-over-month comparison is computed using calendar months, not the arbitrary filtered date window
+- Category insight flags trigger only when a category had a valid previous-month baseline and grew by more than 20%
 
 ## Project structure
 
-```
+```text
 spend_tracker/
 ├── app/
-│   ├── main.py        # FastAPI app, routes, error handling
-│   ├── models.py       # SQLAlchemy ORM models
-│   ├── schemas.py       # Pydantic request/response schemas
-│   ├── crud.py         # Business logic (DB access + summary math)
-│   ├── auth.py         # API key check
-│   └── database.py     # Engine/session setup
+│   ├── auth.py
+│   ├── crud.py
+│   ├── database.py
+│   ├── main.py
+│   ├── models.py
+│   └── schemas.py
+├── frontend/
+│   └── index.html
 ├── tests/
-│   ├── conftest.py     # Test fixtures (isolated in-memory DB per test)
+│   ├── conftest.py
 │   ├── test_expenses.py
 │   └── test_summary.py
-├── frontend/
-│   └── index.html      # Minimal vanilla JS UI
-└── requirements.txt
+├── .gitignore
+├── README.md
+├── requirements.txt
+├── spend_tracker.db
+└── .env
 ```
 
-## Note on AI tool use
+## Testing
 
-*(Fill this in yourself before submitting — see the task's requirement
-for a 2–3 line note on how you used AI tools, and what you changed or
-rejected from their output. It needs to reflect your own actual process.)*
+The project includes automated verification for validation, auth, date filtering, category filtering, invalid-range handling, and summary calculations.
+
+```bash
+pytest -q
+```
+
+Current result: 21 tests passing.
+
+## AI usage note
+
+I used GitHub Copilot to review the project structure, sanity-check the API design, and help clean up the README and implementation notes. I accepted the parts that matched the assignment requirements and rejected suggestions that would add complexity beyond the scope of this small demo, such as per-user authentication or production-grade migration tooling.
+
+## Notes for future improvement
+
+This is a strong demo implementation, but a production version would benefit from:
+
+- storing money as Decimal or integer cents rather than Float
+- stronger auth than a shared API key
+- structured logging and request tracking
+- database migrations instead of create_all()
+- pagination for large expense lists
+- currency support and multi-user scoping

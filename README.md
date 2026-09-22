@@ -1,8 +1,8 @@
 # Spend Tracker
 
-A small REST API and minimal frontend for logging expenses and viewing a spend summary.
+A small REST API and lightweight frontend for logging expenses and reviewing spend trends.
 
-Built with FastAPI, SQLAlchemy, SQLite, and a lightweight HTML/JavaScript UI.
+Built with FastAPI, SQLAlchemy, PostgreSQL, and a minimal HTML/JavaScript UI.
 
 ## Features included
 
@@ -10,35 +10,44 @@ Built with FastAPI, SQLAlchemy, SQLite, and a lightweight HTML/JavaScript UI.
 - List expenses with optional filters by category and date range
 - Get a total spend summary with category breakdown
 - Show month-over-month change and category-level spike insights
-- Protect API routes with a simple API-key check
-- Support a minimal browser UI for quick manual testing
+- Protect API routes with a shared API-key check
+- Run the project in Docker with a PostgreSQL service for a more production-like setup
 
 ## How to run
 
+### Option 1: Docker (recommended)
+
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+# 1. Copy the example environment file
+cp .env.example .env
 
-# 2. Optional: create a .env file with a custom API key
-#    Default is demo-secret-key if no value is set.
-echo API_KEY=your-secret-key > .env
+# 2. Fill in the values for your local setup
+#    Example:
+#    API_KEY=demo-secret-key
+#    DATABASE_URL=postgresql+psycopg://spend_tracker:spend_tracker@db:5432/spend_tracker
+#    POSTGRES_DB=spend_tracker
+#    POSTGRES_USER=spend_tracker
+#    POSTGRES_PASSWORD=spend_tracker
 
-# 3. Start the API
-uvicorn app.main:app --reload
+# 3. Start the full stack
+docker compose up --build
 ```
 
 Then open:
 - API: http://localhost:8000
 - Swagger docs: http://localhost:8000/docs
 
-To use the frontend, open the file in the frontend folder in a browser or serve it locally:
+### Option 2: Local Python environment
 
 ```bash
-cd frontend
-python -m http.server 8001
-```
+# 1. Install dependencies
+pip install -r requirements.txt
 
-Then open http://localhost:8001 and set the API key to match the value in the .env file or use the default demo-secret-key.
+# 2. Create a local .env file with your settings
+#    Make sure DATABASE_URL points to your local PostgreSQL instance
+
+# 3. Start the API directly
+uvicorn app.main:app --reload
 
 ## API
 
@@ -97,17 +106,16 @@ spend_tracker/
 │   ├── main.py
 │   ├── models.py
 │   └── schemas.py
-├── frontend/
-│   └── index.html
 ├── tests/
 │   ├── conftest.py
 │   ├── test_expenses.py
 │   └── test_summary.py
-├── .gitignore
 ├── README.md
+├── docker-compose.yml
+├── Dockerfile
+├── .dockerignore 
 ├── requirements.txt
-├── spend_tracker.db
-└── .env
+└── .gitignore
 ```
 
 ## Testing
@@ -117,8 +125,6 @@ The project includes automated verification for validation, auth, date filtering
 ```bash
 pytest -q
 ```
-
-Current result: 21 tests passing.
 
 ## AI usage note
 

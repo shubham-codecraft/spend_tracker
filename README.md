@@ -1,6 +1,6 @@
 # Spend Tracker
 
-A small REST API and lightweight frontend for logging expenses and reviewing spend trends.
+A FastAPI service and lightweight frontend for logging expenses and reviewing spend trends.
 
 Built with FastAPI, SQLAlchemy, PostgreSQL, and a minimal HTML/JavaScript UI.
 
@@ -10,8 +10,9 @@ Built with FastAPI, SQLAlchemy, PostgreSQL, and a minimal HTML/JavaScript UI.
 - List expenses with optional filters by category and date range
 - Get a total spend summary with category breakdown
 - Show month-over-month change and category-level spike insights
-- Protect API routes with user-specific JWT bearer tokens
-- Run the project in Docker with a PostgreSQL service for a more production-like setup
+- Authenticate users with JWT bearer tokens
+- Scope expenses and summaries to the authenticated user
+- Run the project in Docker with PostgreSQL and Alembic migrations
 
 ## How to run
 
@@ -23,7 +24,6 @@ cp .env.example .env
 
 # 2. Fill in the values for your local setup
 #    Example:
-#    API_KEY=demo-secret-key
 #    DATABASE_URL=postgresql+psycopg://spend_tracker:spend_tracker@db:5432/spend_tracker
 #    POSTGRES_DB=spend_tracker
 #    POSTGRES_USER=spend_tracker
@@ -33,7 +33,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The API container runs `alembic upgrade head` before starting Gunicorn.
+The API container runs `alembic upgrade head` before starting Gunicorn. Do not
+commit `.env`; use `.env.example` as the configuration template.
 
 Then open:
 - API: http://localhost:8000
@@ -50,13 +51,31 @@ pip install -r requirements.txt
 
 # 3. Start the API directly
 uvicorn app.main:app --reload
+```
 
 ## API
 
-All routes except /health require the X-API-Key header.
+`GET /health` is public. All other endpoints require a bearer token from
+`POST /auth/login`:
+
+```json
+{
+  "email": "user@example.com",
+  "first_name": "Jane",
+  "last_name": "Doe"
+}
+```
+
+Use the returned token on protected requests:
+
+```text
+Authorization: Bearer <access_token>
+```
 
 | Method | Path | Description |
 |---|---|---|
+| GET | /health | Service health check |
+| POST | /auth/login | Create or update a user and return a JWT |
 | POST | /expenses | Create an expense |
 | GET | /expenses | List expenses with optional category/date filters |
 | GET | /summary | Get total spend, category totals, and month-over-month summary |
@@ -72,15 +91,7 @@ Request body for creating an expense:
 }
 ```
 
-Optional filters for expense and summary lists:
-
-```text
-/category=Food
-&start_date=2026-09-01
-&end_date=2026-09-30
-```
-
-Example:
+Examples:
 
 ```text
 GET /expenses?category=Food&start_date=2026-09-01&end_date=2026-09-30
@@ -94,6 +105,7 @@ GET /summary?category=Food&start_date=2026-09-01&end_date=2026-09-30
 - Date cannot be in the future
 - If start_date is after end_date, the API returns a 400 error
 - Summary totals are scoped by category/date filter
+- Expense and summary data are scoped to the authenticated user's `user_id`
 - Month-over-month comparison is computed using calendar months, not the arbitrary filtered date window
 - Category insight flags trigger only when a category had a valid previous-month baseline and grew by more than 20%
 
@@ -112,6 +124,10 @@ spend_tracker/
 │   ├── conftest.py
 │   ├── test_expenses.py
 │   └── test_summary.py
+├── migrations/
+│   ├── env.py
+│   └── versions/
+├── alembic.ini
 ├── README.md
 ├── docker-compose.yml
 ├── Dockerfile
@@ -122,7 +138,9 @@ spend_tracker/
 
 ## Testing
 
-The project includes automated verification for validation, auth, date filtering, category filtering, invalid-range handling, and summary calculations.
+The project includes automated verification for validation, JWT auth, user
+scoping, date filtering, category filtering, invalid-range handling, and
+summary calculations.
 
 ```bash
 pytest -q
@@ -147,15 +165,13 @@ databases must be changed through Alembic migrations.
 
 ## AI usage note
 
-I used GitHub Copilot to review the project structure, sanity-check the API design, and help clean up the README and implementation notes. I accepted the parts that matched the assignment requirements and rejected suggestions that would add complexity beyond the scope of this small demo, such as per-user authentication or production-grade migration tooling.
+GitHub Copilot was used to review the project structure, help implement the
+update the documentation.
+The final design decisions were reviewed against the project requirements.
 
-## Notes for future improvement
+## Future improvements
 
-This is a strong demo implementation, but a production version would benefit from:
-
-- storing money as Decimal or integer cents rather than Float
-- stronger auth than a shared API key
-- structured logging and request tracking
-- database migrations instead of create_all()
-- pagination for large expense lists
-- currency support and multi-user scoping
+- Store money as Decimal or integer cents rather than Float
+- Add pagination for large expense lists
+- Add email OTP verification before issuing JWTs
+- Add a production secret manager and rotated JWT signing keys

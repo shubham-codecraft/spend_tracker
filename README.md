@@ -10,7 +10,6 @@ Built with FastAPI, SQLAlchemy, PostgreSQL, and a minimal HTML/JavaScript UI.
 - List expenses with optional filters by category and date range
 - Get a total spend summary with category breakdown
 - Show month-over-month change and category-level spike insights
-- Verify users with one-time passwords sent through Gmail SMTP
 - Authenticate users with JWT bearer tokens
 - Scope expenses and summaries to the authenticated user
 - Run the project in Docker with PostgreSQL and Alembic migrations
@@ -29,13 +28,6 @@ cp .env.example .env
 #    POSTGRES_DB=spend_tracker
 #    POSTGRES_USER=spend_tracker
 #    POSTGRES_PASSWORD=spend_tracker
-#    SMTP_HOST=smtp.gmail.com
-#    SMTP_PORT=465
-#    SMTP_USERNAME=your-gmail-address@gmail.com
-#    SMTP_PASSWORD=your-gmail-app-password
-#    SMTP_FROM_EMAIL=your-gmail-address@gmail.com
-#    OTP_EXPIRE_MINUTES=10
-#    OTP_MAX_ATTEMPTS=5
 
 # 3. Start the full stack
 docker compose up --build
@@ -43,10 +35,6 @@ docker compose up --build
 
 The API container runs `alembic upgrade head` before starting Gunicorn. Do not
 commit `.env`; use `.env.example` as the configuration template.
-
-For Gmail SMTP, enable two-step verification on the sender account and create
-a Google App Password. Use that App Password as `SMTP_PASSWORD`; do not use
-the normal Gmail account password.
 
 Then open:
 - API: http://localhost:8000
@@ -67,25 +55,16 @@ uvicorn app.main:app --reload
 
 ## API
 
-`GET /health` is public. Request an email OTP, verify it, and use the returned
+`GET /health` is public. Sign in with the user's email and name to receive a
 JWT bearer token for protected endpoints:
 
-`POST /auth/request-otp`:
+`POST /auth/login`:
 
 ```json
 {
   "email": "user@example.com",
   "first_name": "Jane",
   "last_name": "Doe"
-}
-```
-
-`POST /auth/verify-otp`:
-
-```json
-{
-  "email": "user@example.com",
-  "otp": "123456"
 }
 ```
 
@@ -98,8 +77,7 @@ Authorization: Bearer <access_token>
 | Method | Path | Description |
 |---|---|---|
 | GET | /health | Service health check |
-| POST | /auth/request-otp | Send an email verification code |
-| POST | /auth/verify-otp | Verify the code and return a JWT |
+| POST | /auth/login | Create or update a user and return a JWT |
 | POST | /expenses | Create an expense |
 | GET | /expenses | List expenses with optional category/date filters |
 | GET | /summary | Get total spend, category totals, and month-over-month summary |
@@ -141,10 +119,8 @@ spend_tracker/
 │   ├── auth.py
 │   ├── crud.py
 │   ├── database.py
-│   ├── email.py
 │   ├── main.py
 │   ├── models.py
-│   ├── otp.py
 │   └── schemas.py
 ├── tests/
 │   ├── conftest.py
@@ -165,8 +141,8 @@ spend_tracker/
 ## Testing
 
 The project includes automated verification for validation, JWT auth, user
-scoping, OTP authentication, date filtering, category filtering,
-invalid-range handling, and summary calculations.
+scoping, date filtering, category filtering, invalid-range handling, and
+summary calculations.
 
 ```bash
 pytest -q
@@ -186,9 +162,8 @@ Create a new migration after changing the SQLAlchemy models with:
 alembic revision -m "describe the schema change"
 ```
 
-The current migrations create user-scoped expenses and the `otp_challenges`
-table. The API container applies pending migrations automatically before
-starting the application.
+The current migrations create user-scoped expenses. The API container applies
+pending migrations automatically before starting the application.
 
 Do not use `Base.metadata.create_all()` to update an existing database. Existing
 databases must be changed through Alembic migrations.
@@ -203,4 +178,5 @@ reviewed against the project requirements.
 
 - Store money as Decimal or integer cents rather than Float
 - Add pagination for large expense lists
+- Add email OTP verification before issuing JWTs
 - Add a production secret manager and rotated JWT signing keys

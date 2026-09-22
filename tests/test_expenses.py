@@ -14,19 +14,14 @@ def test_create_expense_success(client, auth_headers):
     assert "id" in body
 
 
-def test_login_returns_jwt_token(client, otp_sender):
+def test_login_returns_jwt_token(client):
     resp = client.post(
-        "/auth/request-otp",
+        "/auth/login",
         json={
             "email": "login@example.com",
             "first_name": "Login",
             "last_name": "User",
         },
-    )
-    assert resp.status_code == 202
-    resp = client.post(
-        "/auth/verify-otp",
-        json={"email": "login@example.com", "otp": otp_sender["otp"]},
     )
     assert resp.status_code == 200
     body = resp.json()

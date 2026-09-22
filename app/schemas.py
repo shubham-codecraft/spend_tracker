@@ -67,15 +67,10 @@ class SummaryOut(BaseModel):
     insights: list[CategoryInsight]
 
 
-class OTPRequest(BaseModel):
+class UserLoginRequest(BaseModel):
     email: str = Field(..., min_length=1)
     first_name: str = Field(..., min_length=1)
     last_name: str = Field(..., min_length=1)
-
-
-class OTPVerifyRequest(BaseModel):
-    email: str = Field(..., min_length=1)
-    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
 class UserOut(BaseModel):

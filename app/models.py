@@ -30,20 +30,6 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expenses = relationship("Expense", back_populates="user", cascade="all, delete-orphan")
 
-class OTPChallenge(Base):
-    __tablename__ = "otp_challenges"
-
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), nullable=False, index=True)
-    first_name = Column(String(120), nullable=False)
-    last_name = Column(String(120), nullable=False)
-    code_hash = Column(String(64), nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    attempts = Column(Integer, nullable=False, default=0)
-    used_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
 class Expense(Base):
     __tablename__ = "expenses"
 

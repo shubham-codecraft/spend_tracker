@@ -11,7 +11,6 @@ os.environ.setdefault("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 
 from app.main import app  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
-from app import otp as otp_service  # noqa: E402
 
 TEST_DB_URL = "sqlite:///:memory:"
 
@@ -53,30 +52,14 @@ def client(db_session):
 
 
 @pytest.fixture()
-def otp_sender(monkeypatch):
-    captured = {}
-
-    def capture_otp(**kwargs):
-        captured["otp"] = kwargs["otp"]
-
-    monkeypatch.setattr(otp_service, "send_otp_email", capture_otp)
-    return captured
-
-
-@pytest.fixture()
-def auth_headers(client, otp_sender):
+def auth_headers(client):
     response = client.post(
-        "/auth/request-otp",
+        "/auth/login",
         json={
             "email": "test@example.com",
             "first_name": "Test",
             "last_name": "User",
         },
-    )
-    assert response.status_code == 202
-    response = client.post(
-        "/auth/verify-otp",
-        json={"email": "test@example.com", "otp": otp_sender["otp"]},
     )
     assert response.status_code == 200
     token = response.json()["access_token"]

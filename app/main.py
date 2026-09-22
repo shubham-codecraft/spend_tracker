@@ -97,10 +97,13 @@ def request_login_otp(payload: schemas.OTPRequest, db: Session = Depends(get_db)
             last_name=payload.last_name,
         )
     except RuntimeError as exc:
+        logger.error("OTP email service is not configured: %s", exc)
         raise HTTPException(status_code=503, detail="Email service is not configured") from exc
     except OSError as exc:
+        logger.exception("OTP email service connection failed")
         raise HTTPException(status_code=503, detail="Email service is unavailable") from exc
     except smtplib.SMTPException as exc:
+        logger.exception("OTP email service rejected the request")
         raise HTTPException(status_code=503, detail="Email service is unavailable") from exc
     return {"detail": "Verification code sent"}
 

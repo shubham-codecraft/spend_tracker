@@ -65,3 +65,22 @@ class SummaryOut(BaseModel):
     previous_month_total: float
     month_over_month_percent_change: Optional[float]
     insights: list[CategoryInsight]
+
+
+class UserLoginRequest(BaseModel):
+    email: str = Field(..., min_length=1)
+    first_name: str = Field(..., min_length=1)
+    last_name: str = Field(..., min_length=1)
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut

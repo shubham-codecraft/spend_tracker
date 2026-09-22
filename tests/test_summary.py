@@ -7,10 +7,17 @@ from datetime import date
 from app import crud, schemas
 
 
-def _add(db_session, amount, category, on_date):
+def _add(db_session, amount, category, on_date, user_email="default@example.com"):
+    user = crud.get_or_create_user(
+        db_session,
+        email=user_email,
+        first_name="Test",
+        last_name="User",
+    )
     crud.create_expense(
         db_session,
         schemas.ExpenseCreate(amount=amount, category=category, date=on_date),
+        user_id=user.id,
     )
 
 

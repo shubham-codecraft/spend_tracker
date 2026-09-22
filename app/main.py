@@ -12,8 +12,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
-from .auth import require_api_key
-from .database import engine, get_db
+from .auth import create_access_token, get_current_user
+from .database import get_db
 
 logger = logging.getLogger("spend_tracker")
 if not logger.handlers:
@@ -21,8 +21,6 @@ if not logger.handlers:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-
-models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Spend Tracker API",
@@ -87,43 +85,79 @@ def health():
     return {"status": "ok", "service": "spend-tracker"}
 
 
+@app.post("/auth/login", response_model=schemas.Token)
+def login_user(payload: schemas.UserLoginRequest, db: Session = Depends(get_db)):
+    user = crud.get_or_create_user(
+        db,
+        email=payload.email,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+    )
+    token = create_access_token(user)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+        },
+    }
+
+
 @app.post(
     "/expenses",
     response_model=schemas.ExpenseOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_api_key)],
 )
-def create_expense(expense: schemas.ExpenseCreate, db: Session = Depends(get_db)):
-    return crud.create_expense(db, expense)
+def create_expense(
+    expense: schemas.ExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return crud.create_expense(db, expense, user_id=current_user.id)
 
 
 @app.get(
     "/expenses",
     response_model=list[schemas.ExpenseOut],
-    dependencies=[Depends(require_api_key)],
 )
 def get_expenses(
     category: Optional[str] = Query(default=None),
     start_date: Optional[date_type] = Query(default=None),
     end_date: Optional[date_type] = Query(default=None),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=400, detail="start_date must be on or before end_date")
-    return crud.list_expenses(db, category=category, start_date=start_date, end_date=end_date)
+    return crud.list_expenses(
+        db,
+        category=category,
+        start_date=start_date,
+        end_date=end_date,
+        user_id=current_user.id,
+    )
 
 
 @app.get(
     "/summary",
     response_model=schemas.SummaryOut,
-    dependencies=[Depends(require_api_key)],
 )
 def get_summary(
     category: Optional[str] = Query(default=None),
     start_date: Optional[date_type] = Query(default=None),
     end_date: Optional[date_type] = Query(default=None),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=400, detail="start_date must be on or before end_date")
-    return crud.build_summary(db, category=category, start_date=start_date, end_date=end_date)
+    return crud.build_summary(
+        db,
+        category=category,
+        start_date=start_date,
+        end_date=end_date,
+        user_id=current_user.id,
+    )

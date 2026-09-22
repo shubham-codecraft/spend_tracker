@@ -10,7 +10,7 @@ Built with FastAPI, SQLAlchemy, PostgreSQL, and a minimal HTML/JavaScript UI.
 - List expenses with optional filters by category and date range
 - Get a total spend summary with category breakdown
 - Show month-over-month change and category-level spike insights
-- Protect API routes with a shared API-key check
+- Protect API routes with user-specific JWT bearer tokens
 - Run the project in Docker with a PostgreSQL service for a more production-like setup
 
 ## How to run
@@ -32,6 +32,8 @@ cp .env.example .env
 # 3. Start the full stack
 docker compose up --build
 ```
+
+The API container runs `alembic upgrade head` before starting Gunicorn.
 
 Then open:
 - API: http://localhost:8000
@@ -125,6 +127,23 @@ The project includes automated verification for validation, auth, date filtering
 ```bash
 pytest -q
 ```
+
+## Database migrations
+
+Apply migrations manually from the project root with:
+
+```bash
+alembic upgrade head
+```
+
+Create a new migration after changing the SQLAlchemy models with:
+
+```bash
+alembic revision -m "describe the schema change"
+```
+
+Do not use `Base.metadata.create_all()` to update an existing database. Existing
+databases must be changed through Alembic migrations.
 
 ## AI usage note
 

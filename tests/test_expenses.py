@@ -14,7 +14,23 @@ def test_create_expense_success(client, auth_headers):
     assert "id" in body
 
 
-def test_create_expense_requires_api_key(client):
+def test_login_returns_jwt_token(client):
+    resp = client.post(
+        "/auth/login",
+        json={
+            "email": "login@example.com",
+            "first_name": "Login",
+            "last_name": "User",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "access_token" in body
+    assert body["token_type"] == "bearer"
+    assert body["user"]["email"] == "login@example.com"
+
+
+def test_create_expense_requires_valid_jwt(client):
     resp = client.post(
         "/expenses",
         json={"amount": 10, "category": "Food", "date": "2026-09-10"},

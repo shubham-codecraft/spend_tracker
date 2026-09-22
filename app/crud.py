@@ -12,8 +12,41 @@ from sqlalchemy import func
 from . import models, schemas
 
 
-def create_expense(db: Session, expense: schemas.ExpenseCreate) -> models.Expense:
+def get_or_create_user(
+    db: Session,
+    *,
+    email: str,
+    first_name: str,
+    last_name: str,
+) -> models.User:
+    normalized_email = email.strip().lower()
+    user = db.query(models.User).filter(models.User.email == normalized_email).first()
+    if user:
+        user.first_name = first_name.strip()
+        user.last_name = last_name.strip()
+        db.commit()
+        db.refresh(user)
+        return user
+
+    user = models.User(
+        email=normalized_email,
+        first_name=first_name.strip(),
+        last_name=last_name.strip(),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def create_expense(
+    db: Session,
+    expense: schemas.ExpenseCreate,
+    *,
+    user_id: Optional[int] = None,
+) -> models.Expense:
     db_expense = models.Expense(
+        user_id=user_id,
         amount=expense.amount,
         category=expense.category,
         note=expense.note or "",
@@ -30,8 +63,11 @@ def list_expenses(
     category: Optional[str] = None,
     start_date: Optional[date_type] = None,
     end_date: Optional[date_type] = None,
+    user_id: Optional[int] = None,
 ) -> list[models.Expense]:
     query = db.query(models.Expense)
+    if user_id is not None:
+        query = query.filter(models.Expense.user_id == user_id)
     if category:
         query = query.filter(models.Expense.category == category)
     if start_date:
@@ -56,6 +92,7 @@ def build_summary(
     end_date: Optional[date_type] = None,
     today: Optional[date_type] = None,
     insight_threshold_pct: float = 20.0,
+    user_id: Optional[int] = None,
 ) -> schemas.SummaryOut:
     """
     Builds the summary payload.
@@ -70,7 +107,13 @@ def build_summary(
     """
     today = today or date_type.today()
 
-    filtered = list_expenses(db, category=category, start_date=start_date, end_date=end_date)
+    filtered = list_expenses(
+        db,
+        category=category,
+        start_date=start_date,
+        end_date=end_date,
+        user_id=user_id,
+    )
     total_spend = round(sum(e.amount for e in filtered), 2)
 
     by_category: dict[str, float] = defaultdict(float)
@@ -82,7 +125,7 @@ def build_summary(
     ]
 
     # For MoM + insights, pull the (optionally category-scoped) full history.
-    all_for_trend = list_expenses(db, category=category)
+    all_for_trend = list_expenses(db, category=category, user_id=user_id)
     monthly_category_totals: dict[tuple[int, int], dict[str, float]] = defaultdict(
         lambda: defaultdict(float)
     )

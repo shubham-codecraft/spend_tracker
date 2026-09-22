@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Spend Tracker</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; margin-top: 2rem; }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 1rem; }
+  form > * { padding: 6px; }
+  input, button { font-size: 1rem; }
+  button { grid-column: span 2; cursor: pointer; }
+  #config { margin-bottom: 1.5rem; font-size: 0.85rem; color: #555; }
+  #config input { width: 220px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  td, th { border: 1px solid #ddd; padding: 6px 8px; text-align: left; font-size: 0.9rem; }
+  .error { color: #b00020; font-size: 0.9rem; }
+  .up { color: #b00020; }
+  .down { color: #1a7a1a; }
+</style>
+</head>
+<body>
+  <h1>Spend Tracker</h1>
+
+  <div id="config">
+    API base: <input id="apiBase" value="http://localhost:8000" />
+    API key: <input id="apiKey" value="demo-secret-key" />
+  </div>
+
+  <h2>Add expense</h2>
+  <form id="expenseForm">
+    <input name="amount" type="number" step="0.01" placeholder="Amount" required />
+    <input name="category" type="text" placeholder="Category" required />
+    <input name="note" type="text" placeholder="Note (optional)" />
+    <input name="date" type="date" required />
+    <button type="submit">Add expense</button>
+  </form>
+  <p id="formError" class="error"></p>
+
+  <h2>Summary</h2>
+  <button id="refreshBtn">Refresh summary</button>
+  <div id="summary"></div>
+
+  <h2>Recent expenses</h2>
+  <div id="expenseList"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('expenseForm').elements.date.max = new Date().toISOString().slice(0, 10);
+
+  function apiBase() { return $('apiBase').value.replace(/\/$/, ''); }
+  function headers() {
+    return { 'Content-Type': 'application/json', 'X-API-Key': $('apiKey').value };
+  }
+
+  async function loadSummary() {
+    const res = await fetch(`${apiBase()}/summary`, { headers: headers() });
+    const box = $('summary');
+    if (!res.ok) {
+      box.innerHTML = `<p class="error">Failed to load summary (${res.status})</p>`;
+      return;
+    }
+    const s = await res.json();
+    const momText = s.month_over_month_percent_change === null
+      ? 'n/a (no prior month data)'
+      : `${s.month_over_month_percent_change > 0 ? '+' : ''}${s.month_over_month_percent_change}%`;
+    const momClass = (s.month_over_month_percent_change || 0) > 0 ? 'up' : 'down';
+
+    let rows = s.spend_by_category.map(c => `<tr><td>${c.category}</td><td>${c.total.toFixed(2)}</td></tr>`).join('');
+
+    let insightsHtml = '';
+    if (s.insights.length) {
+      insightsHtml = '<h3>⚠ Category spend up &gt;20% vs last month</h3><ul>' +
+        s.insights.map(i => `<li>${i.category}: ${i.previous_month_total.toFixed(2)} → ${i.current_month_total.toFixed(2)} (+${i.percent_change}%)</li>`).join('') +
+        '</ul>';
+    }
+
+    box.innerHTML = `
+      <p><strong>Total spend:</strong> ${s.total_spend.toFixed(2)}</p>
+      <p><strong>This month:</strong> ${s.current_month_total.toFixed(2)}
+         &nbsp;|&nbsp; <strong>Last month:</strong> ${s.previous_month_total.toFixed(2)}
+         &nbsp;|&nbsp; <strong>MoM change:</strong> <span class="${momClass}">${momText}</span></p>
+      <table><thead><tr><th>Category</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
+      ${insightsHtml}
+    `;
+  }
+
+  async function loadExpenses() {
+    const res = await fetch(`${apiBase()}/expenses`, { headers: headers() });
+    const box = $('expenseList');
+    if (!res.ok) {
+      box.innerHTML = `<p class="error">Failed to load expenses (${res.status})</p>`;
+      return;
+    }
+    const items = await res.json();
+    if (!items.length) { box.innerHTML = '<p>No expenses yet.</p>'; return; }
+    box.innerHTML = `<table><thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Note</th></tr></thead><tbody>
+      ${items.map(e => `<tr><td>${e.date}</td><td>${e.category}</td><td>${e.amount.toFixed(2)}</td><td>${e.note || ''}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
+
+  $('expenseForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    $('formError').textContent = '';
+    const form = new FormData(ev.target);
+    const payload = {
+      amount: parseFloat(form.get('amount')),
+      category: form.get('category'),
+      note: form.get('note') || '',
+      date: form.get('date'),
+    };
+    const res = await fetch(`${apiBase()}/expenses`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      $('formError').textContent = `Error: ${JSON.stringify(err.errors || err.detail || res.status)}`;
+      return;
+    }
+    ev.target.reset();
+    await Promise.all([loadSummary(), loadExpenses()]);
+  });
+
+  $('refreshBtn').addEventListener('click', loadSummary);
+
+  loadSummary();
+  loadExpenses();
+</script>
+</body>
+</html>

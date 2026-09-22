@@ -1,6 +1,7 @@
 """Spend Tracker FastAPI application."""
 import logging
 import os
+import smtplib
 import time
 from datetime import date as date_type
 from typing import Optional
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 from . import crud, models, schemas
 from .auth import create_access_token, get_current_user
 from .database import get_db
+from .otp import request_otp, verify_otp
 
 logger = logging.getLogger("spend_tracker")
 if not logger.handlers:
@@ -85,13 +87,32 @@ def health():
     return {"status": "ok", "service": "spend-tracker"}
 
 
-@app.post("/auth/login", response_model=schemas.Token)
-def login_user(payload: schemas.UserLoginRequest, db: Session = Depends(get_db)):
+@app.post("/auth/request-otp", status_code=status.HTTP_202_ACCEPTED)
+def request_login_otp(payload: schemas.OTPRequest, db: Session = Depends(get_db)):
+    try:
+        request_otp(
+            db,
+            email=payload.email,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Email service is not configured") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail="Email service is unavailable") from exc
+    except smtplib.SMTPException as exc:
+        raise HTTPException(status_code=503, detail="Email service is unavailable") from exc
+    return {"detail": "Verification code sent"}
+
+
+@app.post("/auth/verify-otp", response_model=schemas.Token)
+def verify_login_otp(payload: schemas.OTPVerifyRequest, db: Session = Depends(get_db)):
+    challenge = verify_otp(db, email=payload.email, otp=payload.otp)
     user = crud.get_or_create_user(
         db,
-        email=payload.email,
-        first_name=payload.first_name,
-        last_name=payload.last_name,
+        email=challenge.email,
+        first_name=challenge.first_name,
+        last_name=challenge.last_name,
     )
     token = create_access_token(user)
     return {

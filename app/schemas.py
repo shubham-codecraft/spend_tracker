@@ -1,13 +1,13 @@
-"""
-Pydantic schemas — request/response contracts, separate from ORM models
-so the API surface can evolve independently of storage.
-"""
+"""Pydantic request/response schemas."""
 from datetime import date as date_type
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ExpenseCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     amount: float = Field(..., gt=0, description="Must be a positive number")
     category: str = Field(..., min_length=1, max_length=64)
     note: Optional[str] = Field(default="", max_length=255)
@@ -31,20 +31,19 @@ class ExpenseCreate(BaseModel):
     @field_validator("amount")
     @classmethod
     def amount_finite_and_reasonable(cls, v: float) -> float:
-        if v != v or v in (float("inf"), float("-inf")):  # NaN / inf guard
+        if v != v or v in (float("inf"), float("-inf")):
             raise ValueError("amount must be a finite number")
         return round(v, 2)
 
 
 class ExpenseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     amount: float
     category: str
     note: Optional[str]
     date: date_type
-
-    class Config:
-        from_attributes = True
 
 
 class CategoryTotal(BaseModel):

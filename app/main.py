@@ -1,21 +1,26 @@
-"""
-Spend Tracker API.
-
-Run with:
-    uvicorn app.main:app --reload
-"""
+"""Spend Tracker FastAPI application."""
+import logging
+import os
+import time
 from datetime import date as date_type
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, Query, status
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from . import models, schemas, crud
-from .database import engine, get_db
+from . import crud, models, schemas
 from .auth import require_api_key
+from .database import engine, get_db
+
+logger = logging.getLogger("spend_tracker")
+if not logger.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -25,30 +30,61 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Wide-open CORS since the bundled frontend is a static file that may be
-# opened from a different origin/port than the API during local dev.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    logger.info("Request started: %s %s", request.method, request.url.path)
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Unhandled exception for %s %s", request.method, request.url.path)
+        raise
+    duration_ms = round((time.perf_counter() - start) * 1000, 2)
+    logger.info(
+        "Request completed: %s %s status=%s duration_ms=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
+
+
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request, exc: RequestValidationError):
-    """Turn Pydantic's default verbose 422 payload into something a client
-    can render directly without inspecting FastAPI internals."""
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Return a compact validation payload for the frontend."""
     errors = [
         {"field": ".".join(str(p) for p in err["loc"] if p != "body"), "message": err["msg"]}
         for err in exc.errors()
     ]
+    logger.warning("Validation failed for %s %s: %s", request.method, request.url.path, errors)
     return JSONResponse(status_code=422, content={"detail": "Validation failed", "errors": errors})
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    logger.warning("HTTP error for %s %s: %s", request.method, request.url.path, exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error for %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "spend-tracker"}
 
 
 @app.post(
